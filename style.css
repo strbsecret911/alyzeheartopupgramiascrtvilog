@@ -307,26 +307,25 @@ button:disabled { opacity:.6; cursor:not-allowed; }
   .admin-panel{ right:10px; bottom:10px; width: 240px; }
 }
 
-/* OTP checkbox align-left (taruh paling bawah agar menang) */
+/* OTP checkbox: 25% kiri, 75% kanan */
 label.otp-check{
-  display:flex !important;
+  display:grid !important;
+  grid-template-columns: 25% 75%;
   align-items:flex-start;
-  justify-content:flex-start !important;
-  gap:10px;
+  gap:0;
   width:100%;
   margin:8px 0 0;
   text-align:left !important;
-  padding-left:8px;          /* aman iOS (nggak mepet) */
-  padding-right:8px;
   box-sizing:border-box;
 }
 
 label.otp-check input[type="checkbox"]{
-  flex:0 0 auto;
-  margin:2px 0 0 !important; /* reset default mobile */
+  justify-self:start;
+  margin-top:2px;
 }
 
 label.otp-check span{
+  font-size:12px;
   font-weight:600;
   line-height:1.35;
   color:#444;
