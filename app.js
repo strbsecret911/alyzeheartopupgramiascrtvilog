@@ -188,15 +188,9 @@ function parseVoucher(raw) {
 
 async function claimVoucherOnce(voucherCode, orderMeta) {
   const ref = doc(db, VOUCHER_COLLECTION, voucherCode);
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(ref);
-    if (snap.exists()) {
-      throw new Error("Voucher sudah dipakai.");
-    }
-    tx.set(ref, {
-      usedAt: serverTimestamp(),
-      ...orderMeta,
-    });
+  await setDoc(ref, {
+    usedAt: serverTimestamp(),
+    ...orderMeta,
   });
 }
 
