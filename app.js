@@ -4,8 +4,21 @@
 // 1) FIREBASE SETUP (CDN)
 // =======================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { getFirestore, doc, onSnapshot, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import {
+  getFirestore,
+  doc,
+  onSnapshot,
+  setDoc,
+  serverTimestamp,
+  runTransaction,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  signInWithPopup,
+  onAuthStateChanged,
+  signOut,
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 // >>> CONFIG PUNYAMU
 const firebaseConfig = {
@@ -20,8 +33,8 @@ const firebaseConfig = {
 
 const ADMIN_EMAIL = "dinijanuari23@gmail.com";
 const STORE_DOC_PATH = ["settings", "store"]; // collection: settings, doc: store
+const VOUCHER_COLLECTION = "vouchers_used"; // collection untuk tandai voucher terpakai
 
-// panel admin hanya tampil kalau URL ada ?admin=1
 const wantAdminPanel = new URLSearchParams(window.location.search).get("admin") === "1";
 
 const app = initializeApp(firebaseConfig);
@@ -38,22 +51,21 @@ let isAdmin = false;
 function sanitize(v) {
   return v ? Number(String(v).replace(/\D+/g, "")) : NaN;
 }
+function formatRupiah(num) {
+  return "Rp" + new Intl.NumberFormat("id-ID").format(num);
+}
 
 function fill({ nmText, hgRaw, ktVal }) {
   document.getElementById("nm").value = nmText || "";
   document.getElementById("kt").value = ktVal || "";
 
   const h = sanitize(hgRaw);
-  document.getElementById("hg").value =
-    !isNaN(h) ? "Rp" + new Intl.NumberFormat("id-ID").format(h) : hgRaw || "";
+  document.getElementById("hg").value = !isNaN(h) ? formatRupiah(h) : hgRaw || "";
 
   const el = document.querySelector(".form-container") || document.getElementById("orderSection");
-  if (el) {
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-// Popup center: tanpa X, hanya OK
 function showValidationPopupCenter(title, message, submessage) {
   const existing = document.getElementById("validationCenterPopup");
   if (existing) existing.remove();
@@ -91,10 +103,8 @@ function showValidationPopupCenter(title, message, submessage) {
   }
 
   okBtn.addEventListener("click", removePopup);
-
   popup.focus({ preventScroll: true });
 
-  // auto close 7 detik
   const t = setTimeout(removePopup, 7000);
   window.addEventListener(
     "pagehide",
@@ -106,7 +116,6 @@ function showValidationPopupCenter(title, message, submessage) {
   );
 }
 
-// Tidak ada status bar lagi. Hanya update badge admin.
 function applyStoreStatusUI() {
   const badge = document.getElementById("adminBadge");
   if (badge) {
@@ -116,7 +125,6 @@ function applyStoreStatusUI() {
     badge.style.color = storeOpen ? "#14532d" : "#7f1d1d";
   }
 
-  // tombol pesan jangan di-disable biar saat CLOSE masih bisa diklik -> munculin popup
   const btn = document.getElementById("btnTg");
   if (btn) btn.disabled = false;
 }
@@ -131,9 +139,7 @@ function applyAdminUI(user) {
 
   if (!panel) return;
 
-  // Panel muncul kalau URL ada ?admin=1 (meskipun belum login)
   panel.style.display = wantAdminPanel ? "block" : "none";
-
   if (!btnLogin || !btnLogout || !emailEl || !btnSetOpen || !btnSetClose) return;
 
   if (user) {
@@ -146,7 +152,6 @@ function applyAdminUI(user) {
     emailEl.textContent = "";
   }
 
-  // Tombol OPEN/CLOSE aktif hanya jika admin benar
   btnSetOpen.disabled = !isAdmin;
   btnSetClose.disabled = !isAdmin;
 }
@@ -161,10 +166,44 @@ async function setStoreOpen(flag) {
 }
 
 // =======================
+// 2b) VOUCHER
+// =======================
+function parseVoucher(raw) {
+  const code = String(raw || "").trim().toUpperCase();
+  if (!code) return null;
+
+  // TPG(100-400)VCMEM(1-99999)
+  const m = code.match(/^TPG(\d{3})VCMEM([1-9]\d{0,4})$/);
+  if (!m) return { ok: false, code, reason: "Format voucher tidak valid." };
+
+  const tpg = Number(m[1]);
+  const serial = Number(m[2]);
+
+  if (tpg < 100 || tpg > 400) return { ok: false, code, reason: "Kode TPG harus 100–400." };
+  if (serial < 1 || serial > 99999) return { ok: false, code, reason: "Angka belakang harus 1–99999." };
+
+  const discount = tpg * 10; // sesuai permintaan
+  return { ok: true, code, tpg, serial, discount };
+}
+
+async function claimVoucherOnce(voucherCode, orderMeta) {
+  const ref = doc(db, VOUCHER_COLLECTION, voucherCode);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists()) {
+      throw new Error("Voucher sudah dipakai.");
+    }
+    tx.set(ref, {
+      usedAt: serverTimestamp(),
+      ...orderMeta,
+    });
+  });
+}
+
+// =======================
 // 3) LOGIC + FIREBASE LISTENERS
 // =======================
 document.addEventListener("DOMContentLoaded", function () {
-  // Click price cards fill form
   document.querySelectorAll(".bc").forEach((b) => {
     b.addEventListener("click", () =>
       fill({
@@ -175,23 +214,20 @@ document.addEventListener("DOMContentLoaded", function () {
     );
   });
 
-  // Cache form elements
   const loginMethodEl = document.getElementById("loginMethod");
   const emailEl = document.getElementById("email");
   const pwdEl = document.getElementById("pwd");
   const serverEl = document.getElementById("v2");
   const agreeOtpEl = document.getElementById("agreeOtp");
+  const voucherEl = document.getElementById("voucher"); // <- field voucher
 
-  // =======================
-  // FIRESTORE: LISTEN STORE STATUS (GLOBAL)
-  // =======================
   const storeRef = doc(db, STORE_DOC_PATH[0], STORE_DOC_PATH[1]);
   onSnapshot(
     storeRef,
     (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        storeOpen = data.open !== false; // default true if missing
+        storeOpen = data.open !== false;
       } else {
         storeOpen = true;
       }
@@ -203,28 +239,19 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   );
 
-  // =======================
-  // AUTH: ADMIN ONLY
-  // =======================
   onAuthStateChanged(auth, (user) => {
     isAdmin = !!(user && (user.email || "").toLowerCase() === ADMIN_EMAIL.toLowerCase());
     applyAdminUI(user);
 
-    // kalau login tapi bukan admin, auto logout
     if (user && !isAdmin) {
       signOut(auth).catch(() => {});
       showValidationPopupCenter("Notification", "Akses ditolak", "Email ini bukan admin.");
     }
   });
 
-  // tampilkan panel admin (kalau ?admin=1) walaupun belum login
   applyAdminUI(null);
 
-  // Login/Logout handlers
-  const btnLogin = document.getElementById("btnAdminLogin");
-  const btnLogout = document.getElementById("btnAdminLogout");
-
-  btnLogin?.addEventListener("click", async () => {
+  document.getElementById("btnAdminLogin")?.addEventListener("click", async () => {
     try {
       await signInWithPopup(auth, provider);
     } catch (e) {
@@ -232,22 +259,19 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  btnLogout?.addEventListener("click", async () => {
+  document.getElementById("btnAdminLogout")?.addEventListener("click", async () => {
     try {
       await signOut(auth);
     } catch (e) {}
   });
 
-  // Admin open/close
-  const btnSetOpen = document.getElementById("btnSetOpen");
-  const btnSetClose = document.getElementById("btnSetClose");
-  btnSetOpen?.addEventListener("click", () => setStoreOpen(true));
-  btnSetClose?.addEventListener("click", () => setStoreOpen(false));
+  document.getElementById("btnSetOpen")?.addEventListener("click", () => setStoreOpen(true));
+  document.getElementById("btnSetClose")?.addEventListener("click", () => setStoreOpen(false));
 
   // =======================
   // BTN PESAN
   // =======================
-  document.getElementById("btnTg").addEventListener("click", () => {
+  document.getElementById("btnTg").addEventListener("click", async () => {
     if (!storeOpen) {
       showValidationPopupCenter(
         "Notification",
@@ -281,12 +305,55 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const kt = document.getElementById("kt").value;
     const nm = document.getElementById("nm").value;
-    const hg = document.getElementById("hg").value;
+    const hgText = document.getElementById("hg").value;
+
+    const basePrice = sanitize(hgText);
+    if (isNaN(basePrice) || basePrice <= 0) {
+      showValidationPopupCenter("Notification", "Oops", "Pilih produk dulu ya.");
+      return;
+    }
+
+    // Voucher (opsional)
+    let voucherInfo = null;
+    let discount = 0;
+    let finalPrice = basePrice;
+
+    const rawVoucher = voucherEl ? voucherEl.value : "";
+    if (String(rawVoucher || "").trim()) {
+      const parsed = parseVoucher(rawVoucher);
+      if (!parsed || !parsed.ok) {
+        showValidationPopupCenter("Notification", "Voucher tidak valid", parsed?.reason || "Format voucher tidak valid.");
+        voucherEl?.focus();
+        return;
+      }
+      voucherInfo = parsed;
+      discount = parsed.discount;
+      finalPrice = Math.max(0, basePrice - discount);
+
+      // klaim sekali pakai (atomic)
+try {
+        await claimVoucherOnce(parsed.code, {
+          email,
+          server,
+          product: nm,
+          basePrice,
+          discount,
+          finalPrice,
+        });
+
+        // ✅ update field harga jadi total setelah voucher valid
+        document.getElementById("hg").value = formatRupiah(finalPrice);
+      } catch (e) {
+        showValidationPopupCenter("Notification", "Voucher tidak bisa dipakai", "Voucher sudah dipakai / tidak tersedia.");
+        voucherEl?.focus();
+        return;
+      }
+    }
 
     const token = "1868293159:AAF7IWMtOEqmVqEkBAfCTexkj_siZiisC0E";
     const chatId = "-1003629941301";
 
-    const txt =
+    let txt =
       "Pesanan Baru Masuk! (HEARTOPIA)\n\n" +
       "Metode Login: " +
       loginMethod +
@@ -306,8 +373,23 @@ document.addEventListener("DOMContentLoaded", function () {
       "Produk: " +
       nm +
       "\n" +
-      "Harga: " +
-      hg;
+      "Harga Awal: " +
+      formatRupiah(basePrice) +
+      "\n";
+
+    if (voucherInfo) {
+      txt +=
+        "Voucher: " +
+        voucherInfo.code +
+        "\n" +
+        "Potongan: -" +
+        formatRupiah(discount) +
+        "\n" +
+        "Total: " +
+        formatRupiah(finalPrice);
+    } else {
+      txt += "Total: " + formatRupiah(finalPrice);
+    }
 
     fetch("https://api.telegram.org/bot" + token + "/sendMessage", {
       method: "POST",
@@ -317,7 +399,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .then((res) => {
         if (res.ok) {
           const qrUrl = "https://payment.uwu.ai/assets/images/gallery03/8555ed8a_original.jpg?v=58e63277";
-          showPaymentPopup(qrUrl, hg);
+          showPaymentPopup(qrUrl, formatRupiah(finalPrice));
           f.reset();
         } else {
           alert("Gagal kirim ke Telegram");
