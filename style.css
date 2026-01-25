@@ -75,6 +75,25 @@ button:disabled { opacity:.6; cursor:not-allowed; }
 .hidden { display:none; }
 .notes { font-size:11px; color:#666; margin-top:4px; }
 
+.otp-check{
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  margin-top:8px;
+  text-align:left;
+}
+
+.otp-check input[type="checkbox"]{
+  margin-top:2px;
+}
+
+.otp-check span{
+  font-size:12px;
+  font-weight:600;
+  line-height:1.35;
+  color:#444;
+}
+
 /* Payment Modal */
 .modal-backdrop {
   position: fixed;
