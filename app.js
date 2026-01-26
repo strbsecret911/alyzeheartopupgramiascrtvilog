@@ -161,7 +161,6 @@ function applyAdminUI(user) {
   btnSetOpen.disabled = !isAdmin;
   btnSetClose.disabled = !isAdmin;
 
-  // voucher admin button enable/disable
   const btnCreateVoucher = document.getElementById("btnCreateVoucher");
   if (btnCreateVoucher) btnCreateVoucher.disabled = !isAdmin;
 }
@@ -225,8 +224,10 @@ async function claimManualVoucher(codeRaw, orderMeta) {
     if (limit < 1) throw new Error("Voucher tidak aktif.");
     if (usedCount >= limit) throw new Error("Voucher sudah mencapai limit.");
 
+    // IMPORTANT: update hanya usedCount (biar lolos rules publik)
     tx.set(vRef, { usedCount: usedCount + 1 }, { merge: true });
 
+    // log pemakaian (optional)
     const useId = `${code}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const useRef = doc(db, VOUCHER_USES_COLLECTION, useId);
     tx.set(useRef, { code, usedAt: serverTimestamp(), ...orderMeta });
@@ -250,12 +251,15 @@ async function adminUpsertManualVoucher(codeRaw, discountRaw, limitRaw) {
   if (!Number.isFinite(limit) || limit < 1) throw new Error("Limit minimal 1.");
 
   const vRef = doc(db, VOUCHERS_COLLECTION, code);
+
+  // FIX: pastikan usedCount selalu ada (minimal 0)
   await setDoc(
     vRef,
     {
       code,
       discount,
       limit,
+      usedCount: 0,
       updatedAt: serverTimestamp(),
       updatedBy: ADMIN_EMAIL,
     },
