@@ -247,24 +247,35 @@ async function adminUpsertManualVoucher(codeRaw, discountRaw, limitRaw) {
   const limit = Number(limitRaw);
 
   if (!code) throw new Error("Kode voucher wajib diisi.");
-  if (!Number.isFinite(discount) || discount < 0) throw new Error("Potongan harus angka >= 0.");
-  if (!Number.isFinite(limit) || limit < 1) throw new Error("Limit minimal 1.");
+  if (!Number.isFinite(discount) || discount < 0)
+    throw new Error("Potongan harus angka >= 0.");
+  if (!Number.isFinite(limit) || limit < 1)
+    throw new Error("Limit minimal 1.");
 
   const vRef = doc(db, VOUCHERS_COLLECTION, code);
 
-  // FIX: pastikan usedCount selalu ada (minimal 0)
-  await setDoc(
-    vRef,
-    {
-      code,
-      discount,
-      limit,
-      usedCount: 0,
-      updatedAt: serverTimestamp(),
-      updatedBy: ADMIN_EMAIL,
-    },
-    { merge: true }
-  );
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(vRef);
+
+    // ✅ kalau voucher baru → usedCount = 0
+    // ✅ kalau voucher lama → pakai usedCount lama
+    const prevUsedCount = snap.exists()
+      ? Number(snap.data()?.usedCount || 0)
+      : 0;
+
+    tx.set(
+      vRef,
+      {
+        code,
+        discount,
+        limit,
+        usedCount: prevUsedCount,
+        updatedAt: serverTimestamp(),
+        updatedBy: ADMIN_EMAIL,
+      },
+      { merge: true }
+    );
+  });
 
   return code;
 }
