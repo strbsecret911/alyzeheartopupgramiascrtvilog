@@ -47,83 +47,86 @@
       <div class="bc" data-nm="Full Membership (30D)" data-hg="45000" data-kt="hd">Full Membership (30D)<span>Rp45.000<img src="https://payment.uwu.ai/assets/images/gallery01/e932bf56_original.png?v=07662c74" alt="" style="width:14px;height:14px;vertical-align:middle;margin-left:6px;"></span></div>
     </div>
   </div>
-  
-<div class="form-container" id="orderSection">
-  <h2>Form Pembelian Heartopia VILOG</h2>
-  <form id="frm">
 
-    <div class="form-group">
-      <label for="loginMethod">Metode Login *</label>
-      <select id="loginMethod" name="loginMethod" required>
-        <option value="">-- Pilih Metode --</option>
-        <option value="Google">Google</option>
-        <option value="Facebook">Facebook</option>
-      </select>
-    </div>
+  <div class="form-container" id="orderSection">
+    <h2>Form Pembelian Heartopia VILOG</h2>
+    <form id="frm">
 
-    <div class="form-group">
-      <label for="email">Email *</label>
-      <input type="email" id="email" name="email" placeholder="Email akun" required>
-    </div>
-
-    <div class="form-group">
-      <label for="pwd">Password *</label>
-      <input type="password" id="pwd" name="pwd" placeholder="Password akun" required>
-    </div>
-
-    <div class="form-group">
-      <label for="v2">Server *</label>
-      <select id="v2" name="v2" required>
-        <option value="">-- Pilih Server --</option>
-        <option value="SEA">SEA</option>
-        <option value="ASIA">ASIA</option>
-        <option value="TW">TW</option>
-        <option value="HK/MO">HK / MO</option>
-      </select>
-    </div>
-  
-    <div class="form-group">
-      <label for="voucher">Voucher Code (opsional)</label>
-      <input
-        type="text"
-        id="voucher"
-        name="voucher"
-        placeholder="Masukkan voucher disini"
-        autocomplete="off"
-      >
-    </div>
-    
-    <div class="form-group">
-      <div class="notes">
-        Untuk membeli produk ini, besar kemungkinan akan perlunya verifikasi/OTP.
-        Centang apabila kamu bersedia standby & berkabar.
+      <div class="form-group">
+        <label for="loginMethod">Metode Login *</label>
+        <select id="loginMethod" name="loginMethod" required>
+          <option value="">-- Pilih Metode --</option>
+          <option value="Google">Google</option>
+          <option value="Facebook">Facebook</option>
+        </select>
       </div>
-  <label class="otp-check">
-    <input type="checkbox" id="agreeOtp" required>
-    <span>Saya bersedia & bisa standby sampai pesanan done</span>
-  </label>
-    </div>
 
-    <div class="form-group hidden">
-      <label for="kt">Kategori *</label>
-      <input type="text" id="kt" name="kt" readonly required>
-    </div>
+      <div class="form-group">
+        <label for="email">Email *</label>
+        <input type="email" id="email" name="email" placeholder="Email akun" required>
+      </div>
 
-    <div class="form-group">
-      <label for="nm">Order *</label>
-      <input type="text" id="nm" name="nm" readonly required>
-    </div>
+      <div class="form-group">
+        <label for="pwd">Password *</label>
+        <input type="password" id="pwd" name="pwd" placeholder="Password akun" required>
+      </div>
 
-    <div class="form-group">
-      <label for="hg">Harga *</label>
-      <input type="text" id="hg" name="hg" readonly required>
-    </div>
+      <div class="form-group">
+        <label for="v2">Server *</label>
+        <select id="v2" name="v2" required>
+          <option value="">-- Pilih Server --</option>
+          <option value="SEA">SEA</option>
+          <option value="ASIA">ASIA</option>
+          <option value="TW">TW</option>
+          <option value="HK/MO">HK / MO</option>
+        </select>
+      </div>
 
-    <div style="text-align:center; margin:14px 0 6px;">
-      <button type="button" id="btnTg">Pesan via Telegram</button>
-    </div>
-  </form>
-</div>
+      <div class="form-group">
+        <label for="voucher">Voucher Code (opsional)</label>
+        <input
+          type="text"
+          id="voucher"
+          name="voucher"
+          placeholder="Masukkan voucher disini"
+          autocomplete="off"
+        >
+      </div>
+
+      <div class="form-group">
+        <div class="notes">
+          Untuk membeli produk ini, besar kemungkinan akan perlunya verifikasi/OTP.
+          Centang apabila kamu bersedia standby & berkabar.
+        </div>
+
+        <label class="otp-check">
+          <input type="checkbox" id="agreeOtp" required>
+          <span>Saya bersedia & bisa standby sampai pesanan done</span>
+        </label>
+      </div>
+
+      <div class="form-group hidden">
+        <label for="kt">Kategori *</label>
+        <input type="text" id="kt" name="kt" readonly required>
+      </div>
+
+      <div class="form-group">
+        <label for="nm">Order *</label>
+        <input type="text" id="nm" name="nm" readonly required>
+      </div>
+
+      <div class="form-group">
+        <label for="hg">Harga *</label>
+        <input type="text" id="hg" name="hg" readonly required>
+      </div>
+
+      <div style="text-align:center; margin:14px 0 6px;">
+        <button type="button" id="btnTg">Pesan via Telegram</button>
+      </div>
+    </form>
+  </div>
+
+</div><!-- /.page -->
 
 <!-- PAYMENT MODAL -->
 <div id="paymentModalBackdrop" class="modal-backdrop" aria-hidden="true">
@@ -191,6 +194,28 @@
 
   <div class="admin-mini">
     Admin hanya untuk <b>owner</b> (Google Sign-In).<br>
+  </div>
+
+  <!-- Voucher Manual (Admin) -->
+  <div style="margin-top:10px;">
+    <div style="font-weight:900;color:#23314a;margin-bottom:6px;">Voucher Manual</div>
+
+    <div class="form-group" style="margin-bottom:8px;">
+      <label for="adminVoucherCode">Kode Voucher</label>
+      <input id="adminVoucherCode" type="text" placeholder="SATURDAYSALE">
+    </div>
+
+    <div class="form-group" style="margin-bottom:8px;">
+      <label for="adminVoucherDiscount">Potongan (Rp)</label>
+      <input id="adminVoucherDiscount" type="number" placeholder="500" min="0">
+    </div>
+
+    <div class="form-group" style="margin-bottom:8px;">
+      <label for="adminVoucherLimit">Limit pemakaian (global)</label>
+      <input id="adminVoucherLimit" type="number" placeholder="5" min="1">
+    </div>
+
+    <button type="button" id="btnCreateVoucher">Buat / Update Voucher</button>
   </div>
 </div>
 
