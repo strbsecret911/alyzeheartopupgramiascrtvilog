@@ -33,7 +33,13 @@ const firebaseConfig = {
 
 const ADMIN_EMAIL = "dinijanuari23@gmail.com";
 const STORE_DOC_PATH = ["settings", "store"]; // collection: settings, doc: store
-const VOUCHER_COLLECTION = "vouchers_used"; // collection untuk tandai voucher terpakai
+
+// Voucher TPG one-time global
+const VOUCHER_COLLECTION = "vouchers_used"; // doc id = kode voucher
+
+// Voucher manual + limit global
+const VOUCHERS_COLLECTION = "vouchers"; // doc id = kode voucher manual
+const VOUCHER_USES_COLLECTION = "voucher_uses"; // log pemakaian (optional)
 
 const wantAdminPanel = new URLSearchParams(window.location.search).get("admin") === "1";
 
@@ -154,6 +160,10 @@ function applyAdminUI(user) {
 
   btnSetOpen.disabled = !isAdmin;
   btnSetClose.disabled = !isAdmin;
+
+  // voucher admin button enable/disable
+  const btnCreateVoucher = document.getElementById("btnCreateVoucher");
+  if (btnCreateVoucher) btnCreateVoucher.disabled = !isAdmin;
 }
 
 async function setStoreOpen(flag) {
@@ -168,11 +178,12 @@ async function setStoreOpen(flag) {
 // =======================
 // 2b) VOUCHER
 // =======================
-function parseVoucher(raw) {
+
+// Voucher TPG: TPG(100-400)VCMEM(1-99999)
+function parseVoucherTPG(raw) {
   const code = String(raw || "").trim().toUpperCase();
   if (!code) return null;
 
-  // TPG(100-400)VCMEM(1-99999)
   const m = code.match(/^TPG(\d{3})VCMEM([1-9]\d{0,4})$/);
   if (!m) return { ok: false, code, reason: "Format voucher tidak valid." };
 
@@ -182,16 +193,76 @@ function parseVoucher(raw) {
   if (tpg < 100 || tpg > 400) return { ok: false, code, reason: "Kode TPG harus 100–400." };
   if (serial < 1 || serial > 99999) return { ok: false, code, reason: "Angka belakang harus 1–99999." };
 
-  const discount = tpg * 10; // sesuai permintaan
+  const discount = tpg * 10;
   return { ok: true, code, tpg, serial, discount };
 }
 
+// Claim voucher TPG once (rules: create-only)
 async function claimVoucherOnce(voucherCode, orderMeta) {
   const ref = doc(db, VOUCHER_COLLECTION, voucherCode);
   await setDoc(ref, {
     usedAt: serverTimestamp(),
     ...orderMeta,
   });
+}
+
+// Claim voucher manual (limit global) + log use
+async function claimManualVoucher(codeRaw, orderMeta) {
+  const code = String(codeRaw || "").trim().toUpperCase();
+  if (!code) return null;
+
+  const vRef = doc(db, VOUCHERS_COLLECTION, code);
+
+  const res = await runTransaction(db, async (tx) => {
+    const snap = await tx.get(vRef);
+    if (!snap.exists()) throw new Error("Voucher tidak ditemukan.");
+
+    const data = snap.data() || {};
+    const discount = Number(data.discount || 0);
+    const limit = Number(data.limit || 0);
+    const usedCount = Number(data.usedCount || 0);
+
+    if (limit < 1) throw new Error("Voucher tidak aktif.");
+    if (usedCount >= limit) throw new Error("Voucher sudah mencapai limit.");
+
+    tx.set(vRef, { usedCount: usedCount + 1, lastUsedAt: serverTimestamp() }, { merge: true });
+
+    const useId = `${code}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const useRef = doc(db, VOUCHER_USES_COLLECTION, useId);
+    tx.set(useRef, { code, usedAt: serverTimestamp(), ...orderMeta });
+
+    return { code, discount, limit, usedCount: usedCount + 1 };
+  });
+
+  return res;
+}
+
+// Admin create/update voucher manual
+async function adminUpsertManualVoucher(codeRaw, discountRaw, limitRaw) {
+  if (!isAdmin) throw new Error("Akses ditolak.");
+
+  const code = String(codeRaw || "").trim().toUpperCase();
+  const discount = Number(discountRaw);
+  const limit = Number(limitRaw);
+
+  if (!code) throw new Error("Kode voucher wajib diisi.");
+  if (!Number.isFinite(discount) || discount < 0) throw new Error("Potongan harus angka >= 0.");
+  if (!Number.isFinite(limit) || limit < 1) throw new Error("Limit minimal 1.");
+
+  const vRef = doc(db, VOUCHERS_COLLECTION, code);
+  await setDoc(
+    vRef,
+    {
+      code,
+      discount,
+      limit,
+      updatedAt: serverTimestamp(),
+      updatedBy: ADMIN_EMAIL,
+    },
+    { merge: true }
+  );
+
+  return code;
 }
 
 // =======================
@@ -213,7 +284,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const pwdEl = document.getElementById("pwd");
   const serverEl = document.getElementById("v2");
   const agreeOtpEl = document.getElementById("agreeOtp");
-  const voucherEl = document.getElementById("voucher"); // <- field voucher
+  const voucherEl = document.getElementById("voucher");
 
   const storeRef = doc(db, STORE_DOC_PATH[0], STORE_DOC_PATH[1]);
   onSnapshot(
@@ -263,6 +334,22 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("btnSetClose")?.addEventListener("click", () => setStoreOpen(false));
 
   // =======================
+  // ADMIN: CREATE VOUCHER MANUAL
+  // =======================
+  document.getElementById("btnCreateVoucher")?.addEventListener("click", async () => {
+    try {
+      const code = document.getElementById("adminVoucherCode")?.value || "";
+      const disc = document.getElementById("adminVoucherDiscount")?.value || "";
+      const lim = document.getElementById("adminVoucherLimit")?.value || "";
+
+      const savedCode = await adminUpsertManualVoucher(code, disc, lim);
+      showValidationPopupCenter("Notification", "Berhasil", `Voucher ${savedCode} disimpan.`);
+    } catch (e) {
+      showValidationPopupCenter("Notification", "Gagal", e?.message || "Tidak bisa menyimpan voucher.");
+    }
+  });
+
+  // =======================
   // BTN PESAN
   // =======================
   document.getElementById("btnTg").addEventListener("click", async () => {
@@ -308,39 +395,62 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // Voucher (opsional)
-    let voucherInfo = null;
+    let voucherCodeUsed = "";
     let discount = 0;
     let finalPrice = basePrice;
 
-    const rawVoucher = voucherEl ? voucherEl.value : "";
-    if (String(rawVoucher || "").trim()) {
-      const parsed = parseVoucher(rawVoucher);
-      if (!parsed || !parsed.ok) {
-        showValidationPopupCenter("Notification", "Voucher tidak valid", parsed?.reason || "Format voucher tidak valid.");
-        voucherEl?.focus();
-        return;
-      }
-      voucherInfo = parsed;
-      discount = parsed.discount;
-      finalPrice = Math.max(0, basePrice - discount);
+    const rawVoucher = String(voucherEl?.value || "").trim();
+    if (rawVoucher) {
+      const parsedTPG = parseVoucherTPG(rawVoucher);
 
-      // klaim sekali pakai (atomic)
-try {
-        await claimVoucherOnce(parsed.code, {
-          email,
-          server,
-          product: nm,
-          basePrice,
-          discount,
-          finalPrice,
-        });
+      if (parsedTPG && parsedTPG.ok) {
+        // TPG one-time
+        voucherCodeUsed = parsedTPG.code;
+        discount = parsedTPG.discount;
+        finalPrice = Math.max(0, basePrice - discount);
 
-        // ✅ update field harga jadi total setelah voucher valid
-        document.getElementById("hg").value = formatRupiah(finalPrice);
-      } catch (e) {
-        showValidationPopupCenter("Notification", "Voucher tidak bisa dipakai", "Voucher sudah dipakai / tidak tersedia.");
-        voucherEl?.focus();
-        return;
+        try {
+          await claimVoucherOnce(parsedTPG.code, {
+            email,
+            server,
+            product: nm,
+            basePrice,
+            discount,
+            finalPrice,
+            type: "TPG",
+          });
+
+          document.getElementById("hg").value = formatRupiah(finalPrice);
+        } catch (e) {
+          showValidationPopupCenter(
+            "Notification",
+            "Voucher tidak bisa dipakai",
+            "Voucher sudah dipakai / tidak tersedia."
+          );
+          voucherEl?.focus();
+          return;
+        }
+      } else {
+        // Manual voucher with limit
+        try {
+          const claimed = await claimManualVoucher(rawVoucher, {
+            email,
+            server,
+            product: nm,
+            basePrice,
+            type: "MANUAL",
+          });
+
+          voucherCodeUsed = claimed.code;
+          discount = Number(claimed.discount || 0);
+          finalPrice = Math.max(0, basePrice - discount);
+
+          document.getElementById("hg").value = formatRupiah(finalPrice);
+        } catch (e) {
+          showValidationPopupCenter("Notification", "Voucher tidak bisa dipakai", e?.message || "Voucher invalid/limit.");
+          voucherEl?.focus();
+          return;
+        }
       }
     }
 
@@ -368,21 +478,18 @@ try {
       nm +
       "\n" +
       "Harga Awal: " +
-      formatRupiah(basePrice) +
-      "\n";
+      formatRupiah(basePrice);
 
-    if (voucherInfo) {
+    if (voucherCodeUsed) {
       txt +=
-        "Voucher: " +
-        voucherInfo.code +
-        "\n" +
-        "Potongan: -" +
+        "\nVoucher: " +
+        voucherCodeUsed +
+        "\nPotongan: -" +
         formatRupiah(discount) +
-        "\n" +
-        "Total: " +
+        "\nTotal: " +
         formatRupiah(finalPrice);
     } else {
-      txt += "Total: " + formatRupiah(finalPrice);
+      txt += "\nTotal: " + formatRupiah(finalPrice);
     }
 
     fetch("https://api.telegram.org/bot" + token + "/sendMessage", {
