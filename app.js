@@ -225,7 +225,7 @@ async function claimManualVoucher(codeRaw, orderMeta) {
     if (limit < 1) throw new Error("Voucher tidak aktif.");
     if (usedCount >= limit) throw new Error("Voucher sudah mencapai limit.");
 
-    tx.set(vRef, { usedCount: usedCount + 1, lastUsedAt: serverTimestamp() }, { merge: true });
+    tx.set(vRef, { usedCount: usedCount + 1 }, { merge: true });
 
     const useId = `${code}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const useRef = doc(db, VOUCHER_USES_COLLECTION, useId);
