@@ -11,6 +11,7 @@ import {
   setDoc,
   serverTimestamp,
   runTransaction,
+  getDoc,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import {
   getAuth,
@@ -301,6 +302,135 @@ document.addEventListener("DOMContentLoaded", function () {
   const agreeOtpEl = document.getElementById("agreeOtp");
   const voucherEl = document.getElementById("voucher");
 
+  // =======================
+  // VOUCHER PREVIEW UI
+  // =======================
+  function ensureVoucherPreviewEl() {
+    let el = document.getElementById("voucherPreview");
+    if (el) return el;
+
+    if (!voucherEl) return null;
+
+    el = document.createElement("div");
+    el.id = "voucherPreview";
+    el.style.display = "none";
+    el.style.marginTop = "8px";
+    el.style.fontSize = "14px";
+    el.style.lineHeight = "1.35";
+    el.style.color = "#15803d"; // hijau
+
+    // sisipkan tepat setelah input voucher
+    voucherEl.insertAdjacentElement("afterend", el);
+    return el;
+  }
+
+  function setVoucherPreview(ok, code, finalPrice) {
+    const el = ensureVoucherPreviewEl();
+    if (!el) return;
+
+    if (!ok) {
+      el.style.display = "none";
+      el.innerHTML = "";
+      return;
+    }
+
+    el.style.display = "block";
+    el.innerHTML = `✅ Voucher dapat digunakan. (${code}) – Total harga: <b>${formatRupiah(finalPrice)}</b>`;
+  }
+
+  let voucherPreviewReqId = 0;
+  let voucherPreviewTimer = null;
+
+  async function checkVoucherPreviewNow() {
+    const reqId = ++voucherPreviewReqId;
+
+    const raw = String(voucherEl?.value || "").trim();
+    if (!raw) {
+      setVoucherPreview(false);
+      return;
+    }
+
+    const nm = document.getElementById("nm")?.value || "";
+    const server = serverEl?.value || "";
+    const email = emailEl?.value || "";
+
+    // ambil basePrice dari hg (anggap nilai saat ini adalah base)
+    const basePrice = sanitize(document.getElementById("hg")?.value || "");
+    if (isNaN(basePrice) || basePrice <= 0) {
+      setVoucherPreview(false);
+      return;
+    }
+
+    const parsedTPG = parseVoucherTPG(raw);
+
+    // ====== TPG preview ======
+    if (parsedTPG && parsedTPG.ok) {
+      try {
+        const usedRef = doc(db, VOUCHER_COLLECTION, parsedTPG.code);
+        const usedSnap = await getDoc(usedRef);
+
+        // kalau request sudah keduluan yang baru, stop update UI
+        if (reqId !== voucherPreviewReqId) return;
+
+        if (usedSnap.exists()) {
+          setVoucherPreview(false);
+          return;
+        }
+
+        const finalPrice = Math.max(0, basePrice - parsedTPG.discount);
+        setVoucherPreview(true, parsedTPG.code, finalPrice);
+        return;
+      } catch (e) {
+        if (reqId !== voucherPreviewReqId) return;
+        setVoucherPreview(false);
+        return;
+      }
+    }
+
+    // ====== MANUAL preview ======
+    try {
+      const code = String(raw || "").trim().toUpperCase();
+      const vRef = doc(db, VOUCHERS_COLLECTION, code);
+      const vSnap = await getDoc(vRef);
+
+      if (reqId !== voucherPreviewReqId) return;
+
+      if (!vSnap.exists()) {
+        setVoucherPreview(false);
+        return;
+      }
+
+      const data = vSnap.data() || {};
+      const discount = Number(data.discount || 0);
+      const limit = Number(data.limit || 0);
+      const usedCount = Number(data.usedCount || 0);
+
+      if (limit < 1) {
+        setVoucherPreview(false);
+        return;
+      }
+      if (usedCount >= limit) {
+        setVoucherPreview(false);
+        return;
+      }
+
+      const finalPrice = Math.max(0, basePrice - discount);
+      setVoucherPreview(true, code, finalPrice);
+    } catch (e) {
+      if (reqId !== voucherPreviewReqId) return;
+      setVoucherPreview(false);
+    }
+  }
+
+  function scheduleVoucherPreview() {
+    if (!voucherEl) return;
+    if (voucherPreviewTimer) clearTimeout(voucherPreviewTimer);
+    voucherPreviewTimer = setTimeout(checkVoucherPreviewNow, 250);
+  }
+
+  voucherEl?.addEventListener("input", scheduleVoucherPreview);
+  voucherEl?.addEventListener("blur", checkVoucherPreviewNow);
+  
   const storeRef = doc(db, STORE_DOC_PATH[0], STORE_DOC_PATH[1]);
   onSnapshot(
     storeRef,
