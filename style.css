@@ -300,7 +300,8 @@ button:disabled { opacity:.6; cursor:not-allowed; }
 }
 
 @media (max-width:420px){
-  .prcContainer{ grid-template-columns: repeat(2, 1fr); }
+  .prcContainer{ grid-template-columns: repeat(3, 1fr); }
+}
   .bc { padding:8px 4px; font-size:11px; min-height:62px; }
   .bc span { font-size:10px; margin-top:4px; }
   body { padding:12px; font-size:11px; }
