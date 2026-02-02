@@ -299,21 +299,25 @@ button:disabled { opacity:.6; cursor:not-allowed; }
   line-height:1.35;
 }
 
+/* RESPONSIVE FIX */
 @media (max-width:420px){
   .prcContainer{ grid-template-columns: repeat(3, 1fr); }
-}
   .bc { padding:8px 4px; font-size:11px; min-height:62px; }
   .bc span { font-size:10px; margin-top:4px; }
   body { padding:12px; font-size:11px; }
   .admin-panel{ right:10px; bottom:10px; width: 240px; }
 }
 
-/* OTP checkbox: 25% kiri, 75% kanan */
+/* ================================
+   OTP checkbox (FINAL RAPiH)
+   checkbox kiri, teks kanan
+   center vertikal + teks ga pecah
+================================== */
 label.otp-check{
   display:grid !important;
-  grid-template-columns: 25% 75%;
-  align-items:flex-start;
-  gap:0;
+  grid-template-columns: 25px 1fr; /* kiri fix, kanan fleksibel */
+  align-items:center;              /* center vertikal */
+  gap:10px;
   width:100%;
   margin:8px 0 0;
   text-align:left !important;
@@ -321,11 +325,18 @@ label.otp-check{
 }
 
 label.otp-check input[type="checkbox"]{
-  justify-self:start;
-  margin-top:2px;
+  width:20px;
+  height:20px;
+  margin:0;
+  justify-self:center;
 }
 
 label.otp-check span{
+  display:block;
+  width:100%;
+  white-space:normal;
+  word-break:normal;
+  overflow-wrap:break-word;
   font-size:12px;
   font-weight:600;
   line-height:1.35;
