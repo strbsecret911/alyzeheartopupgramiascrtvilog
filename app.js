@@ -501,8 +501,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!storeOpen) {
       showValidationPopupCenter(
         "Notification",
-        "SEDANG ISTIRAHAT/CLOSE",
-        "Mohon maaf, saat ini kamu belum bisa melakukan pemesanan."
+        "MAINTENANCE MODE",
+        "Mohon maaf, saat ini tidak bisa mengirim pesanan. silahkan pesan manual melalui @tfairy."
       );
       return;
     }
