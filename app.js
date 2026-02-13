@@ -501,8 +501,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!storeOpen) {
       showValidationPopupCenter(
         "Notification",
-        "MAINTENANCE MODE",
-        "Mohon maaf, saat ini tidak bisa mengirim pesanan. silahkan pesan manual melalui @tfairy."
+        "BREAK MODE ON",
+        "Mohon maaf, saat ini tidak bisa mengirim pesanan. silahkan coba lagi nanti."
       );
       return;
     }
