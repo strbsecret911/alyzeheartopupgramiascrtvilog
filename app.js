@@ -48,7 +48,7 @@ const CLOSE_REASONS = {
   break:
     "Mohon maaf, admin sedang istirahat / belum bisa memproses orderan. Silahkan kembali lagi nanti atau pesan manual melalui @topupgrambot atau @tfairy.",
   nostock:
-    "Yah, admin lagi restock, nih. Mohon tunggu beberapa saat lagi, atau cek channel @TOPUPGRAM untuk informasi terbaru ^^.",
+    "Yah, admin lagi restock, nih. Mohon tunggu beberapa saat lagi, atau cek channel @TOPUPGRAM untuk informasi terbaru ^^",
 };
 
 let storeOpen = true;
@@ -530,7 +530,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   document.getElementById("btnTg").addEventListener("click", async () => {
     if (!storeOpen) {
-      showValidationPopupCenter("Notification", "Gagal terkirim karena store sedang tutup", getStoreClosedMessage());
+      showValidationPopupCenter("Notification", "Gagal mengirim order.", getStoreClosedMessage());
       return;
     }
 
