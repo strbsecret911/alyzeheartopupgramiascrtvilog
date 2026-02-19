@@ -1,8 +1,5 @@
 // app.js (ESM module, langsung jalan di browser)
 
-// =======================
-// 1) FIREBASE SETUP (CDN)
-// =======================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
   getFirestore,
@@ -21,7 +18,6 @@ import {
   signOut,
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
-// >>> CONFIG PUNYAMU
 const firebaseConfig = {
   apiKey: "AIzaSyDpNvuwxq9bgAV700hRxAkcs7BgrzHd72A",
   authDomain: "autoorderobux.firebaseapp.com",
@@ -33,14 +29,11 @@ const firebaseConfig = {
 };
 
 const ADMIN_EMAIL = "dinijanuari23@gmail.com";
-const STORE_DOC_PATH = ["settings", "store"]; // collection: settings, doc: store
+const STORE_DOC_PATH = ["settings", "store"];
 
-// Voucher TPG one-time global
-const VOUCHER_COLLECTION = "vouchers_used"; // doc id = kode voucher
-
-// Voucher manual + limit global
-const VOUCHERS_COLLECTION = "vouchers"; // doc id = kode voucher manual
-const VOUCHER_USES_COLLECTION = "voucher_uses"; // log pemakaian (optional)
+const VOUCHER_COLLECTION = "vouchers_used";
+const VOUCHERS_COLLECTION = "vouchers";
+const VOUCHER_USES_COLLECTION = "voucher_uses";
 
 const wantAdminPanel = new URLSearchParams(window.location.search).get("admin") === "1";
 
@@ -49,12 +42,20 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
+const CLOSE_REASONS = {
+  maintenance:
+    "Mohon maaf, saat ini sedang ada pemeliharaan oleh admin. Silahkan pesan manual melalui @topupgrambot atau @tfairy.",
+  break:
+    "Mohon maaf, admin sedang istirahat / belum bisa memproses orderan. Silahkan kembali lagi nanti atau pesan manual melalui @topupgrambot atau @tfairy.",
+  nostock:
+    "Yah, admin lagi restock, nih. Mohon tunggu beberapa saat lagi, atau cek channel @TOPUPGRAM untuk informasi terbaru ^^.",
+};
+
 let storeOpen = true;
+let storeCloseReasonKey = "";
+let storeCloseReasonText = "";
 let isAdmin = false;
 
-// =======================
-// 2) UTIL UI
-// =======================
 function sanitize(v) {
   return v ? Number(String(v).replace(/\D+/g, "")) : NaN;
 }
@@ -123,13 +124,29 @@ function showValidationPopupCenter(title, message, submessage) {
   );
 }
 
+function getStoreClosedMessage() {
+  const msg =
+    (storeCloseReasonText && String(storeCloseReasonText).trim()) ||
+    (storeCloseReasonKey && CLOSE_REASONS[storeCloseReasonKey]) ||
+    "Mohon maaf, store sedang tutup. Silahkan coba lagi nanti.";
+  return msg;
+}
+
 function applyStoreStatusUI() {
-  const badge = document.getElementById("adminBadge");
-  if (badge) {
-    badge.textContent = storeOpen ? "OPEN" : "CLOSED";
-    badge.style.borderColor = storeOpen ? "#bbf7d0" : "#fecaca";
-    badge.style.background = storeOpen ? "#ecfdf5" : "#fef2f2";
-    badge.style.color = storeOpen ? "#14532d" : "#7f1d1d";
+  const adminBadge = document.getElementById("adminBadge");
+  if (adminBadge) {
+    adminBadge.textContent = storeOpen ? "OPEN" : "CLOSED";
+    adminBadge.style.borderColor = storeOpen ? "#bbf7d0" : "#fecaca";
+    adminBadge.style.background = storeOpen ? "#ecfdf5" : "#fef2f2";
+    adminBadge.style.color = storeOpen ? "#14532d" : "#7f1d1d";
+  }
+
+  const globalBadge = document.getElementById("storeStatusBadge");
+  if (globalBadge) {
+    const v = globalBadge.querySelector(".value");
+    if (v) v.textContent = storeOpen ? "OPEN" : "CLOSE";
+    globalBadge.classList.toggle("is-open", storeOpen);
+    globalBadge.classList.toggle("is-close", !storeOpen);
   }
 
   const btn = document.getElementById("btnTg");
@@ -166,20 +183,24 @@ function applyAdminUI(user) {
   if (btnCreateVoucher) btnCreateVoucher.disabled = !isAdmin;
 }
 
-async function setStoreOpen(flag) {
+async function setStoreOpen(flag, reasonKey = "", reasonText = "") {
   if (!isAdmin) {
     showValidationPopupCenter("Notification", "Akses ditolak", "Hanya admin yang bisa mengubah status.");
     return;
   }
   const ref = doc(db, STORE_DOC_PATH[0], STORE_DOC_PATH[1]);
-  await setDoc(ref, { open: !!flag, updatedAt: serverTimestamp() }, { merge: true });
+  await setDoc(
+    ref,
+    {
+      open: !!flag,
+      closeReasonKey: flag ? "" : (reasonKey || ""),
+      closeReasonText: flag ? "" : (reasonText || ""),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 }
 
-// =======================
-// 2b) VOUCHER
-// =======================
-
-// Voucher TPG: TPG(100-400)VCMEM(1-99999)
 function parseVoucherTPG(raw) {
   const code = String(raw || "").trim().toUpperCase();
   if (!code) return null;
@@ -197,7 +218,6 @@ function parseVoucherTPG(raw) {
   return { ok: true, code, tpg, serial, discount };
 }
 
-// Claim voucher TPG once (rules: create-only)
 async function claimVoucherOnce(voucherCode, orderMeta) {
   const ref = doc(db, VOUCHER_COLLECTION, voucherCode);
   await setDoc(ref, {
@@ -206,7 +226,6 @@ async function claimVoucherOnce(voucherCode, orderMeta) {
   });
 }
 
-// Claim voucher manual (limit global) + log use
 async function claimManualVoucher(codeRaw, orderMeta) {
   const code = String(codeRaw || "").trim().toUpperCase();
   if (!code) return null;
@@ -225,10 +244,8 @@ async function claimManualVoucher(codeRaw, orderMeta) {
     if (limit < 1) throw new Error("Voucher tidak aktif.");
     if (usedCount >= limit) throw new Error("Voucher sudah mencapai limit.");
 
-    // IMPORTANT: update hanya usedCount (biar lolos rules publik)
     tx.set(vRef, { usedCount: usedCount + 1 }, { merge: true });
 
-    // log pemakaian (optional)
     const useId = `${code}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
     const useRef = doc(db, VOUCHER_USES_COLLECTION, useId);
     tx.set(useRef, { code, usedAt: serverTimestamp(), ...orderMeta });
@@ -239,7 +256,6 @@ async function claimManualVoucher(codeRaw, orderMeta) {
   return res;
 }
 
-// Admin create/update voucher manual
 async function adminUpsertManualVoucher(codeRaw, discountRaw, limitRaw) {
   if (!isAdmin) throw new Error("Akses ditolak.");
 
@@ -248,21 +264,14 @@ async function adminUpsertManualVoucher(codeRaw, discountRaw, limitRaw) {
   const limit = Number(limitRaw);
 
   if (!code) throw new Error("Kode voucher wajib diisi.");
-  if (!Number.isFinite(discount) || discount < 0)
-    throw new Error("Potongan harus angka >= 0.");
-  if (!Number.isFinite(limit) || limit < 1)
-    throw new Error("Limit minimal 1.");
+  if (!Number.isFinite(discount) || discount < 0) throw new Error("Potongan harus angka >= 0.");
+  if (!Number.isFinite(limit) || limit < 1) throw new Error("Limit minimal 1.");
 
   const vRef = doc(db, VOUCHERS_COLLECTION, code);
 
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(vRef);
-
-    // ✅ kalau voucher baru → usedCount = 0
-    // ✅ kalau voucher lama → pakai usedCount lama
-    const prevUsedCount = snap.exists()
-      ? Number(snap.data()?.usedCount || 0)
-      : 0;
+    const prevUsedCount = snap.exists() ? Number(snap.data()?.usedCount || 0) : 0;
 
     tx.set(
       vRef,
@@ -281,9 +290,6 @@ async function adminUpsertManualVoucher(codeRaw, discountRaw, limitRaw) {
   return code;
 }
 
-// =======================
-// 3) LOGIC + FIREBASE LISTENERS
-// =======================
 document.addEventListener("DOMContentLoaded", function () {
   document.querySelectorAll(".bc").forEach((b) => {
     b.addEventListener("click", () =>
@@ -302,9 +308,6 @@ document.addEventListener("DOMContentLoaded", function () {
   const agreeOtpEl = document.getElementById("agreeOtp");
   const voucherEl = document.getElementById("voucher");
 
-  // =======================
-  // VOUCHER PREVIEW UI
-  // =======================
   function ensureVoucherPreviewEl() {
     let el = document.getElementById("voucherPreview");
     if (el) return el;
@@ -317,9 +320,8 @@ document.addEventListener("DOMContentLoaded", function () {
     el.style.marginTop = "8px";
     el.style.fontSize = "14px";
     el.style.lineHeight = "1.35";
-    el.style.color = "#15803d"; // hijau
+    el.style.color = "#15803d";
 
-    // sisipkan tepat setelah input voucher
     voucherEl.insertAdjacentElement("afterend", el);
     return el;
   }
@@ -350,11 +352,6 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    const nm = document.getElementById("nm")?.value || "";
-    const server = serverEl?.value || "";
-    const email = emailEl?.value || "";
-
-    // ambil basePrice dari hg (anggap nilai saat ini adalah base)
     const basePrice = sanitize(document.getElementById("hg")?.value || "");
     if (isNaN(basePrice) || basePrice <= 0) {
       setVoucherPreview(false);
@@ -363,13 +360,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const parsedTPG = parseVoucherTPG(raw);
 
-    // ====== TPG preview ======
     if (parsedTPG && parsedTPG.ok) {
       try {
         const usedRef = doc(db, VOUCHER_COLLECTION, parsedTPG.code);
         const usedSnap = await getDoc(usedRef);
 
-        // kalau request sudah keduluan yang baru, stop update UI
         if (reqId !== voucherPreviewReqId) return;
 
         if (usedSnap.exists()) {
@@ -387,7 +382,6 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
-    // ====== MANUAL preview ======
     try {
       const code = String(raw || "").trim().toUpperCase();
       const vRef = doc(db, VOUCHERS_COLLECTION, code);
@@ -430,21 +424,41 @@ document.addEventListener("DOMContentLoaded", function () {
 
   voucherEl?.addEventListener("input", scheduleVoucherPreview);
   voucherEl?.addEventListener("blur", checkVoucherPreviewNow);
-  
+
+  const closeReasonSelect = document.getElementById("closeReasonSelect");
+  const closeReasonCustom = document.getElementById("closeReasonCustom");
+
+  function syncCloseReasonCustomVisibility() {
+    const v = String(closeReasonSelect?.value || "");
+    if (!closeReasonCustom) return;
+    closeReasonCustom.style.display = v === "custom" ? "block" : "none";
+    if (v !== "custom") closeReasonCustom.value = "";
+  }
+
+  closeReasonSelect?.addEventListener("change", syncCloseReasonCustomVisibility);
+  syncCloseReasonCustomVisibility();
+
   const storeRef = doc(db, STORE_DOC_PATH[0], STORE_DOC_PATH[1]);
   onSnapshot(
     storeRef,
     (snap) => {
       if (snap.exists()) {
-        const data = snap.data();
+        const data = snap.data() || {};
         storeOpen = data.open !== false;
+
+        storeCloseReasonKey = String(data.closeReasonKey || "");
+        storeCloseReasonText = String(data.closeReasonText || "");
       } else {
         storeOpen = true;
+        storeCloseReasonKey = "";
+        storeCloseReasonText = "";
       }
       applyStoreStatusUI();
     },
     () => {
       storeOpen = true;
+      storeCloseReasonKey = "";
+      storeCloseReasonText = "";
       applyStoreStatusUI();
     }
   );
@@ -476,11 +490,31 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   document.getElementById("btnSetOpen")?.addEventListener("click", () => setStoreOpen(true));
-  document.getElementById("btnSetClose")?.addEventListener("click", () => setStoreOpen(false));
 
-  // =======================
-  // ADMIN: CREATE VOUCHER MANUAL
-  // =======================
+  document.getElementById("btnSetClose")?.addEventListener("click", () => {
+    if (!isAdmin) return;
+
+    const key = String(closeReasonSelect?.value || "").trim();
+    if (!key) {
+      showValidationPopupCenter("Notification", "Oops", "Pilih alasan close dulu ya.");
+      return;
+    }
+
+    let reasonText = "";
+    if (key === "custom") {
+      reasonText = String(closeReasonCustom?.value || "").trim();
+      if (!reasonText) {
+        showValidationPopupCenter("Notification", "Oops", "Isi alasan custom dulu ya.");
+        closeReasonCustom?.focus();
+        return;
+      }
+    } else {
+      reasonText = CLOSE_REASONS[key] || "";
+    }
+
+    setStoreOpen(false, key, reasonText);
+  });
+
   document.getElementById("btnCreateVoucher")?.addEventListener("click", async () => {
     try {
       const code = document.getElementById("adminVoucherCode")?.value || "";
@@ -494,16 +528,9 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  // =======================
-  // BTN PESAN
-  // =======================
   document.getElementById("btnTg").addEventListener("click", async () => {
     if (!storeOpen) {
-      showValidationPopupCenter(
-        "Notification",
-        "BREAK MODE ON",
-        "Mohon maaf, saat ini tidak bisa mengirim pesanan. silahkan coba lagi nanti."
-      );
+      showValidationPopupCenter("Notification", "Gagal terkirim karena store sedang tutup", getStoreClosedMessage());
       return;
     }
 
@@ -539,7 +566,6 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    // Voucher (opsional)
     let voucherCodeUsed = "";
     let discount = 0;
     let finalPrice = basePrice;
@@ -549,7 +575,6 @@ document.addEventListener("DOMContentLoaded", function () {
       const parsedTPG = parseVoucherTPG(rawVoucher);
 
       if (parsedTPG && parsedTPG.ok) {
-        // TPG one-time
         voucherCodeUsed = parsedTPG.code;
         discount = parsedTPG.discount;
         finalPrice = Math.max(0, basePrice - discount);
@@ -567,16 +592,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
           document.getElementById("hg").value = formatRupiah(finalPrice);
         } catch (e) {
-          showValidationPopupCenter(
-            "Notification",
-            "Voucher tidak bisa dipakai",
-            "Voucher sudah dipakai / tidak tersedia."
-          );
+          showValidationPopupCenter("Notification", "Voucher tidak bisa dipakai", "Voucher sudah dipakai / tidak tersedia.");
           voucherEl?.focus();
           return;
         }
       } else {
-        // Manual voucher with limit
         try {
           const claimed = await claimManualVoucher(rawVoucher, {
             email,
@@ -654,7 +674,6 @@ document.addEventListener("DOMContentLoaded", function () {
       .catch(() => alert("Terjadi kesalahan."));
   });
 
-  /* ==== PAYMENT POPUP (kode kamu, tidak diubah) ==== */
   function showPaymentPopup(qrUrl, hargaFormatted) {
     const backdrop = document.getElementById("paymentModalBackdrop");
     const modalQr = document.getElementById("modalQr");
