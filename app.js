@@ -302,6 +302,7 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   const loginMethodEl = document.getElementById("loginMethod");
+  const nickingameEl = document.getElementById("nickingame");
   const emailEl = document.getElementById("email");
   const pwdEl = document.getElementById("pwd");
   const serverEl = document.getElementById("v2");
@@ -552,6 +553,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     const loginMethod = loginMethodEl?.value || "";
+    const nickingame = nickingameEl?.value || "";
     const email = emailEl?.value || "";
     const password = pwdEl?.value || "";
     const server = serverEl?.value || "";
@@ -626,6 +628,9 @@ document.addEventListener("DOMContentLoaded", function () {
       "Pesanan Baru Masuk! (HEARTOPIA)\n\n" +
       "Metode Login: " +
       loginMethod +
+      "\n" +
+      "Nickname in game: " +
+      nickingame +
       "\n" +
       "Email: " +
       email +
